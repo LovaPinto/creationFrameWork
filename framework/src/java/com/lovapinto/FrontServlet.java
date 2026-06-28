@@ -6,6 +6,7 @@ import java.util.List;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import java.io.*;
+import java.lang.reflect.Method;
 
 public class FrontServlet extends HttpServlet {
 
@@ -29,10 +30,22 @@ public class FrontServlet extends HttpServlet {
         res.setContentType("text/html");
         PrintWriter out = res.getWriter();
         out.println("<html><body>");
+
         if (controllers != null) {
             out.println("<h1>Controllers trouvés :</h1>");
+
+
             for (Class<?> c : controllers) {
-                out.println("<p>" + c.getName() + "</p>");
+                out.println("<h2>" + c.getName() + "</h2>");
+
+                // 🔹 Ici tu parcours les méthodes du contrôleur
+                for (Method method : c.getDeclaredMethods()) {
+                    if (method.isAnnotationPresent(MyMethode.class)) {
+                        MyMethode ann = method.getAnnotation(MyMethode.class);
+                        out.println("<p>Méthode : " + method.getName() +
+                                " → path = " + ann.path() + "</p>");
+                    }
+                }
             }
         } else {
             out.println("<p>Aucun contrôleur trouvé.</p>");
@@ -60,4 +73,23 @@ public class FrontServlet extends HttpServlet {
         }
         return controllers;
     }
+   private void scanMethode(String className) throws Exception {
+    // Charger la classe par son nom
+    Class<?> clazz = Class.forName(className);
+
+    // Parcourir toutes les méthodes déclarées
+    for (Method method : clazz.getDeclaredMethods()) {
+        // Vérifier si la méthode est annotée avec @MyMethode
+        if (method.isAnnotationPresent(MyMethode.class)) {
+            // Récupérer l’annotation
+            MyMethode ann = method.getAnnotation(MyMethode.class);
+
+            // Afficher les infos
+            System.out.println("Classe : " + clazz.getName());
+            System.out.println("Méthode : " + method.getName());
+            System.out.println("Path : " + ann.path());
+        }
+    }
+}
+
 }
