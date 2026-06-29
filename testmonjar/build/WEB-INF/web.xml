@@ -3,9 +3,7 @@
          xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee
          https://jakarta.ee/xml/ns/jakartaee/web-app_5_0.xsd"
          version="5.0">
-
     <display-name>TD-Connexion et cookies</display-name>
-
     <servlet>
         <servlet-name>SampleServlet</servlet-name>
         <servlet-class>com.lovapinto.SampleServlet</servlet-class>
@@ -15,12 +13,10 @@
         <servlet-name>SampleServlet</servlet-name>
         <url-pattern>/</url-pattern>
     </servlet-mapping>
-
    <servlet>
         <servlet-name>FrontServlet</servlet-name>
         <servlet-class>com.lovapinto.FrontServlet</servlet-class>
     </servlet>
-
     <!-- Mapping de l’URL vers ce servlet -->
     <servlet-mapping>
         <servlet-name>FrontServlet</servlet-name>
