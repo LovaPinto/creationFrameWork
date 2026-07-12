@@ -4,6 +4,21 @@
          https://jakarta.ee/xml/ns/jakartaee/web-app_5_0.xsd"
          version="5.0">
     <display-name>TD-Connexion et cookies</display-name>
+
+    <context-param>
+        <param-name>viewPrefix</param-name>
+        <param-value>/WEB-INF/views/</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>viewSuffix</param-name>
+        <param-value>.jsp</param-value>
+    </context-param>
+
+    <listener>
+        <listener-class>com.lovapinto.FrontServletListener</listener-class>
+    </listener>
+
     <servlet>
         <servlet-name>SampleServlet</servlet-name>
         <servlet-class>com.lovapinto.SampleServlet</servlet-class>
@@ -20,7 +35,7 @@
     <!-- Mapping de l’URL vers ce servlet -->
     <servlet-mapping>
         <servlet-name>FrontServlet</servlet-name>
-        <url-pattern>/controller</url-pattern>
+        <url-pattern>/controller/*</url-pattern>
     </servlet-mapping>
 
 
