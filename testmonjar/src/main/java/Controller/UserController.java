@@ -13,7 +13,7 @@ public class UserController {
 
     private final UserRepository userRepository = new UserRepository();
 
-    @UrlMapping(path = "/users")
+    @UrlMapping(path = "/user")
     public ModelAndView list(Model model) {
         List<String> users = userRepository.findAll();
         model.setAttribute("users", users);
