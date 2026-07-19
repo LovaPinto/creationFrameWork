@@ -1,8 +1,9 @@
 @echo off
 setlocal
+pushd "%~dp0"
 
-set APP_NAME=testmonjar
-set SRC_DIR=src\main\java
+set APP_NAME=framework
+set SRC_DIR=src\java
 set WEB_DIR=src\main\webapp
 set BUILD_DIR=build
 set LIB_DIR=C:\apache-tomcat-10.1.55-windows-x64\apache-tomcat-10.1.55\lib
@@ -28,6 +29,8 @@ javac -cp "%SERVLET_API_JAR%" ^
 
 if errorlevel 1 (
     echo ERREUR COMPILATION
+    del sources.txt
+    popd
     pause
     exit /b 1
 )
@@ -35,8 +38,15 @@ if errorlevel 1 (
 del sources.txt
 
 echo =========================
-echo COPIE WEB
+echo COPIE WEBAPP
 echo =========================
+
+if not exist %WEB_DIR%\WEB-INF\web.xml (
+    echo ERREUR: web.xml introuvable dans %WEB_DIR%\WEB-INF\web.xml
+    popd
+    pause
+    exit /b 1
+)
 
 xcopy %WEB_DIR% %BUILD_DIR% /E /I /Y
 
@@ -58,4 +68,5 @@ echo =========================
 echo DONE
 echo =========================
 
+popd
 pause
