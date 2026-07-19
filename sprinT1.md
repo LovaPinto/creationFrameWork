@@ -59,3 +59,14 @@ En résumé, ce sprint consiste à :
 - Mettre en place la structure repository -> controller -> view
 - Utiliser ModelAndView pour gérer le passage des données aux vues
 - Configurer correctement les préfixes et suffixes pour le rendu
+
+demarrer container
+
+methode utilitaire qui donne le stx
+aplication 
+
+comment avoir le instence container spring au demarage
+invoker dans 
+
+mis instancie bean au @ Mycontroller
+

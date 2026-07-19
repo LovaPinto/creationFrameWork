@@ -1,5 +1,6 @@
 package Controller;
 
+import com.lovapinto.Autowired;
 import com.lovapinto.MyController;
 import com.lovapinto.Model;
 import com.lovapinto.ModelAndView;
@@ -11,7 +12,8 @@ import java.util.List;
 @MyController
 public class UserController {
 
-    private final UserRepository userRepository = new UserRepository();
+    @Autowired
+    private UserRepository userRepository;
 
     @UrlMapping(path = "/user")
     public ModelAndView list(Model model) {

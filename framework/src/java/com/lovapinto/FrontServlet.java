@@ -6,13 +6,9 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,11 +18,12 @@ import java.util.stream.Collectors;
 public class FrontServlet extends HttpServlet {
 
     private Map<UrlMethod, Method> urlMappings = new HashMap<>();
-    private Map<String, Object> controllerInstances = new HashMap<>();
+    private ApplicationContext applicationContext;
 
     @Override
     public void init() throws ServletException {
         super.init();
+        applicationContext = (ApplicationContext) getServletContext().getAttribute("applicationContext");
         rebuildRegistry();
     }
 
@@ -44,12 +41,12 @@ public class FrontServlet extends HttpServlet {
 
     private void rebuildRegistry() throws ServletException {
         try {
-            List<Class<?>> controllers = resolveControllers();
             urlMappings = new HashMap<>();
-            controllerInstances = new HashMap<>();
 
-            for (Class<?> controllerClass : controllers) {
-                controllerInstances.put(controllerClass.getName(), instantiateController(controllerClass));
+            for (Class<?> controllerClass : applicationContext.getBeanClasses()) {
+                if (controllerClass.isAnnotationPresent(RepositoryAnnotation.class)) {
+                    continue;
+                }
 
                 Map<UrlMethod, Method> classMappings = getUrlMappings(controllerClass);
                 for (Map.Entry<UrlMethod, Method> entry : classMappings.entrySet()) {
@@ -67,7 +64,6 @@ public class FrontServlet extends HttpServlet {
                 }
             }
 
-            getServletContext().setAttribute("controllers", controllers);
             getServletContext().setAttribute("urlMappings", urlMappings);
         } catch (ServletException e) {
             getServletContext().setAttribute("initError", e.getMessage());
@@ -75,55 +71,6 @@ public class FrontServlet extends HttpServlet {
         } catch (Exception e) {
             throw new ServletException("Erreur initialisation registre URL", e);
         }
-    }
-
-    private List<Class<?>> resolveControllers() throws Exception {
-        Object storedControllers = getServletContext().getAttribute("controllers");
-        if (storedControllers instanceof List<?>) {
-            List<Class<?>> controllers = new ArrayList<>();
-            for (Object item : (List<?>) storedControllers) {
-                if (item instanceof Class<?>) {
-                    controllers.add((Class<?>) item);
-                }
-            }
-            if (!controllers.isEmpty()) {
-                return controllers;
-            }
-        }
-
-        String packageName = getServletContext().getInitParameter("controllers-package");
-        if (packageName == null || packageName.isBlank()) {
-            packageName = "Controller";
-        }
-        return scanControllers(packageName);
-    }
-
-    private List<Class<?>> scanControllers(String packageName) throws Exception {
-        List<Class<?>> controllers = new ArrayList<>();
-        String path = packageName.replace('.', '/');
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        URL resource = classLoader.getResource(path);
-        if (resource == null) {
-            return controllers;
-        }
-
-        File directory = new File(resource.toURI());
-        File[] files = directory.listFiles();
-        if (files == null) {
-            return controllers;
-        }
-
-        for (File file : files) {
-            if (file.getName().endsWith(".class")) {
-                String className = packageName + "." + file.getName().replace(".class", "");
-                Class<?> clazz = Class.forName(className);
-                if (clazz.isAnnotationPresent(MyController.class) || clazz.isAnnotationPresent(FWController.class)) {
-                    controllers.add(clazz);
-                }
-            }
-        }
-
-        return controllers;
     }
 
     private Map<UrlMethod, Method> getUrlMappings(Class<?> controllerClass) {
@@ -190,7 +137,7 @@ public class FrontServlet extends HttpServlet {
         }
 
         try {
-            Object controller = getControllerInstance(method.getDeclaringClass().getName(), httpMethod, requestPath);
+            Object controller = getControllerInstance(method.getDeclaringClass().getName());
             if (controller == null) {
                 res.sendError(HttpServletResponse.SC_NOT_FOUND, "Contrôleur introuvable pour " + requestPath);
                 return;
@@ -224,24 +171,18 @@ public class FrontServlet extends HttpServlet {
         return urlMappings;
     }
 
-    protected Object getControllerInstance(String className, String httpMethod, String path) {
-        if (controllerInstances == null) {
+    protected Object getControllerInstance(String className) {
+        if (applicationContext == null) {
             return null;
         }
-        Method method = getMethodForUrl(path, httpMethod);
-        if (method == null) {
-            return null;
-        }
-        return controllerInstances.get(className);
+        return applicationContext.getBean(className);
     }
 
     private void renderControllerIndex(HttpServletResponse res) throws IOException {
         List<String> controllers = new ArrayList<>();
-        if (getServletContext().getAttribute("controllers") instanceof List<?>) {
-            for (Object item : (List<?>) getServletContext().getAttribute("controllers")) {
-                if (item instanceof Class<?>) {
-                    controllers.add(((Class<?>) item).getSimpleName());
-                }
+        for (Class<?> clazz : applicationContext.getBeanClasses()) {
+            if (!clazz.isAnnotationPresent(RepositoryAnnotation.class)) {
+                controllers.add(clazz.getSimpleName());
             }
         }
 
@@ -260,18 +201,6 @@ public class FrontServlet extends HttpServlet {
         }
         writer.println("</ul>");
         writer.println("</body></html>");
-    }
-
-    private Object instantiateController(Class<?> controllerClass) {
-        try {
-            Constructor<?> constructor = controllerClass.getDeclaredConstructor();
-            if (!Modifier.isPublic(constructor.getModifiers())) {
-                constructor.setAccessible(true);
-            }
-            return constructor.newInstance();
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private Object[] buildArguments(Method method, HttpServletRequest req, HttpServletResponse res) {

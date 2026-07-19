@@ -23,12 +23,17 @@ if not exist "%FRAMEWORK_JAR%" (
 	exit /b 1
 )
 
+set MYSQL_JAR=..\framework\lib\mysql-connector-j-9.5.0.jar
+if not exist "%MYSQL_JAR%" (
+	set MYSQL_JAR=lib\mysql-connector-j-9.5.0.jar
+)
+
 if exist %BUILD_DIR% rmdir /s /q %BUILD_DIR%
 mkdir %BUILD_DIR%\WEB-INF\classes
 mkdir %BUILD_DIR%\WEB-INF\lib
 
 dir /s /b %SRC_DIR%\*.java > sources.txt
-javac -cp "%SERVLET_API_JAR%;%FRAMEWORK_JAR%" -d %BUILD_DIR%\WEB-INF\classes @sources.txt
+javac -cp "%SERVLET_API_JAR%;%FRAMEWORK_JAR%;%MYSQL_JAR%" -d %BUILD_DIR%\WEB-INF\classes @sources.txt
 if errorlevel 1 (
 	del sources.txt
 	popd
@@ -39,6 +44,7 @@ del sources.txt
 
 xcopy %WEB_DIR% %BUILD_DIR% /E /I /Y >nul
 copy /Y "%FRAMEWORK_JAR%" "%BUILD_DIR%\WEB-INF\lib\sprint1.jar" >nul
+copy /Y "%MYSQL_JAR%" "%BUILD_DIR%\WEB-INF\lib\mysql-connector-j-9.5.0.jar" >nul
 
 cd %BUILD_DIR%
 jar -cvf %APP_NAME%.war *

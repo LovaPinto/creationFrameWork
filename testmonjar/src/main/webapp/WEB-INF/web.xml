@@ -15,6 +15,26 @@
         <param-value>.jsp</param-value>
     </context-param>
 
+    <context-param>
+        <param-name>db-url</param-name>
+        <param-value>jdbc:mysql://localhost:3306/db_framework</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>db-user</param-name>
+        <param-value>root</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>db-password</param-name>
+        <param-value></param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>controllers-package</param-name>
+        <param-value>Controller,Repository</param-value>
+    </context-param>
+
     <listener>
         <listener-class>com.lovapinto.FrontServletListener</listener-class>
     </listener>
@@ -28,17 +48,14 @@
         <servlet-name>SampleServlet</servlet-name>
         <url-pattern>/</url-pattern>
     </servlet-mapping>
-   <servlet>
+    <servlet>
         <servlet-name>FrontServlet</servlet-name>
         <servlet-class>com.lovapinto.FrontServlet</servlet-class>
     </servlet>
-    <!-- Mapping de l’URL vers ce servlet -->
+
     <servlet-mapping>
         <servlet-name>FrontServlet</servlet-name>
         <url-pattern>/controller/*</url-pattern>
     </servlet-mapping>
-
-
-
 
 </web-app>
