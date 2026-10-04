@@ -762,6 +762,168 @@ http://localhost:8080/s5/controller/user
 
 ---
 
+## Etape 14 : API JSON avec l'annotation `@WebApi`
+
+**Fichiers** : `framework/src/java/com/lovapinto/WebApi.java` (nouveau), `framework/src/java/com/lovapinto/JsonSerializer.java` (nouveau), `framework/src/java/com/lovapinto/FrontServlet.java` (modifie)
+
+**But** : quand une methode de controleur est annotee `@WebApi`, la valeur qu'elle retourne est serialisee en JSON et ecrite directement dans la reponse, au lieu d'etre traitee comme un nom de vue JSP. Sans cette annotation, le comportement du sprint 5 (ModelAndView + JSP) ne change pas.
+
+### 1. L'annotation `@WebApi`
+
+```java
+package com.lovapinto;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD, ElementType.TYPE})
+public @interface WebApi {
+}
+```
+
+**Explication** : `@Target` accepte `METHOD` et `TYPE`.
+
+- Sur une **methode** : seule cette route renvoie du JSON.
+- Sur une **classe** : toutes les methodes `@UrlMapping` du controleur renvoient du JSON (equivalent d'un `@RestController`).
+
+**Utilisation** :
+
+```java
+@MyController
+@WebApi                       // toutes les routes du controleur -> JSON
+public class ApiController {
+    @UrlMapping(path = "/api/ping")
+    public String ping() {
+        return "pong";
+    }
+}
+```
+
+### 2. Le serialiseur `JsonSerializer`
+
+Aucune librairie externe : le framework n'utilise ni Maven ni Gradle, la compilation se fait a la main avec `javac`. Le serialiseur reflectif est donc ecrit dans le framework.
+
+Point d'entree public :
+
+```java
+public static String toJson(Object value)
+```
+
+Types traites :
+
+| Valeur | JSON produit |
+|--------|--------------|
+| `null` | `null` |
+| `String`, `char` | `"..."` avec echappement |
+| `Boolean` | `true` / `false` |
+| `Number` | litteral ; `NaN` et `Infinity` donnent `null` (valeurs interdites en JSON) |
+| `Enum` | `"NOM"` |
+| `Collection`, `Iterable` | `[...]` |
+| `Map` | `{"clef":valeur}` |
+| Tableaux, y compris primitifs (`int[]`, `double[]`...) | `[...]` |
+| `Date`, `java.time.*`, tout autre type `java.*` | `"..."` via `toString()` |
+| Objet quelconque | `{...}` |
+
+**Champs d'un objet** : le serialiseur cherche d'abord un **getter** (`getXxx()` sans parametre et non `void`, puis `isXxx()` pour un booleen) ; s'il n'en trouve pas, il lit le **champ prive** par reflection. Il ignore les membres `static`, `transient` et synthetiques, ainsi que `getClass()`. L'ordre des cles JSON suit l'ordre de declaration des champs, donc la reponse est stable d'un appel a l'autre.
+
+**Echappement** : `"`, `\`, `\b`, `\f`, `\n`, `\r`, `\t`, plus tout caractere de controle inferieur a `0x20` ecrit en `\u00XX`. Le `/` n'est pas echappe.
+
+**Garde-fous** : les accesseurs sont mis en cache par classe (`ClassValue`), donc la reflexion n'est pas refaite a chaque requete ; la profondeur est limitee a 32 niveaux et les objets deja vus sur le chemin courant sont ecrits `null`, ce qui empeche un `StackOverflowError` sur un graphe circulaire.
+
+### 3. La branche JSON dans `FrontServlet`
+
+Dans `handleRequest`, la verification se place **apres** `method.invoke(...)` et **avant** le test `instanceof ModelAndView` :
+
+```java
+Object result = method.invoke(controller, buildArguments(method, req, res));
+if (isWebApi(method)) {
+    renderJson(res, result);
+    return;
+}
+
+if (result instanceof ModelAndView) {
+    renderModelAndView(req, res, (ModelAndView) result);
+    return;
+}
+```
+
+```java
+private boolean isWebApi(Method method) {
+    return method.isAnnotationPresent(WebApi.class)
+            || method.getDeclaringClass().isAnnotationPresent(WebApi.class);
+}
+
+private void renderJson(HttpServletResponse res, Object result) throws IOException {
+    Object value = result instanceof ModelAndView modelAndView ? modelAndView.getModel() : result;
+
+    res.setContentType("application/json; charset=UTF-8");
+    res.setCharacterEncoding("UTF-8");
+    res.getWriter().write(JsonSerializer.toJson(value));
+}
+```
+
+**Explication** : l'ordre compte. La branche JSON est evaluee avant le test sur `String`, donc une methode `@WebApi` qui renvoie un `String` produit bien `"pong"` en JSON et pas un forward vers une vue. Si une methode `@WebApi` renvoie un `ModelAndView`, c'est son `model` qui est serialise (`{"users":[...]}`) et non l'objet complet. `buildArguments` n'est pas modifie : `HttpServletRequest` et `HttpServletResponse` restent injectables dans une methode `@WebApi`.
+
+**Utilisation** :
+
+```java
+@MyController
+public class UserController {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @UrlMapping(path = "/user")
+    public ModelAndView list(Model model) {          // toujours une JSP
+        model.setAttribute("users", userRepository.findAll());
+        return new ModelAndView("users/list").setModelContainer(model);
+    }
+
+    @WebApi
+    @UrlMapping(path = "/api/users")
+    public List<String> listJson() {                  // ["Alice","Bob","Charlie"]
+        return userRepository.findAll();
+    }
+
+    @WebApi
+    @UrlMapping(path = "/api/info")
+    public ApiInfo info() {                           // {"framework":"...","version":"sprint6",...}
+        return new ApiInfo("lovapinto-spring-like", "sprint6",
+                List.of("/api/users", "/api/info", "/api/ping"));
+    }
+}
+```
+
+Le package `Dto` est volontairement hors du parametre `controllers-package` du `web.xml` (`Controller,Repository`), sinon `ApiInfo` serait instancie comme un bean par le conteneur IoC alors que c'est un simple objet de transport.
+
+### 4. Tester
+
+```batch
+:: 1. Compiler le framework (genere framework\lib\sprint1.jar, puis compile l'app)
+cd framework
+compile.bat
+
+:: 2. Reconstruire et deployer le WAR de testmonjar
+cd ..\testmonjar
+deploy.bat
+
+:: 3. Redemarrer Tomcat
+```
+
+```bash
+curl -i http://localhost:8080/s5/controller/api/info
+curl -i http://localhost:8080/s5/controller/api/users
+curl -i http://localhost:8080/s5/controller/api/ping
+curl -i http://localhost:8080/s5/controller/user
+```
+
+Attendu : les trois premieres reponses en `application/json`, la derniere reste du HTML. L'ordre des etapes 1 puis 2 est obligatoire, `deploy.bat` compile l'application contre `framework\lib\sprint1.jar` et utiliserait un jar perime sinon.
+
+---
+
 ## Schema recapitulatif : Flux d'execution
 
 ```
@@ -833,7 +995,9 @@ JSP affiche : Alice, Bob, Charlie (depuis MySQL)
 | `RepositoryAnnotation.java` | **NOUVEAU** | Annotation @Repository |
 | `DatabaseConfig.java` | **NOUVEAU** | Gestion connexion JDBC |
 | `FrontServletListener.java` | MODIFIE | Cree le conteneur au demarrage |
-| `FrontServlet.java` | MODIFIE | Utilise le conteneur |
+| `FrontServlet.java` | MODIFIE | Utilise le conteneur + branche JSON @WebApi |
+| `WebApi.java` | **NOUVEAU** | Annotation @WebApi (methode ou classe) |
+| `JsonSerializer.java` | **NOUVEAU** | Serialisation reflective objet -> JSON |
 | `FWController.java` | INCHANGE | Annotation existante |
 | `MyController.java` | INCHANGE | Annotation existante |
 | `MyEntity.java` | INCHANGE | Annotation existante |
@@ -847,9 +1011,11 @@ JSP affiche : Alice, Bob, Charlie (depuis MySQL)
 
 | Fichier | Type | Role |
 |---------|------|------|
-| `UserController.java` | MODIFIE | Utilise @Autowired |
+| `UserController.java` | MODIFIE | Utilise @Autowired + 2 routes @WebApi |
 | `UserRepository.java` | MODIFIE | Lit depuis MySQL |
 | `ClassAController.java` | INCHANGE | Controller vide |
+| `ApiController.java` | **NOUVEAU** | Controleur @WebApi au niveau classe |
+| `ApiInfo.java` | **NOUVEAU** | Objet de transport serialise en JSON |
 | `web.xml` | MODIFIE | Parametres DB + packages |
 | `deploy.bat` | MODIFIE | Ajout driver MySQL |
 | `users/list.jsp` | INCHANGE | Affiche la liste |

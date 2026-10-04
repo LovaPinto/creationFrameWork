@@ -144,6 +144,11 @@ public class FrontServlet extends HttpServlet {
             }
 
             Object result = method.invoke(controller, buildArguments(method, req, res));
+            if (isWebApi(method)) {
+                renderJson(res, result);
+                return;
+            }
+
             if (result instanceof ModelAndView) {
                 renderModelAndView(req, res, (ModelAndView) result);
                 return;
@@ -158,6 +163,19 @@ public class FrontServlet extends HttpServlet {
         } catch (Exception e) {
             throw new ServletException("Erreur invocation de " + method.getName(), e);
         }
+    }
+
+    private boolean isWebApi(Method method) {
+        return method.isAnnotationPresent(WebApi.class)
+                || method.getDeclaringClass().isAnnotationPresent(WebApi.class);
+    }
+
+    private void renderJson(HttpServletResponse res, Object result) throws IOException {
+        Object value = result instanceof ModelAndView modelAndView ? modelAndView.getModel() : result;
+
+        res.setContentType("application/json; charset=UTF-8");
+        res.setCharacterEncoding("UTF-8");
+        res.getWriter().write(JsonSerializer.toJson(value));
     }
 
     protected Method getMethodForUrl(String path, String httpMethod) {
