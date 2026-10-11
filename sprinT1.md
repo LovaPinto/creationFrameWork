@@ -70,3 +70,24 @@ invoker dans
 
 mis instancie bean au @ Mycontroller
 
+# sprint -6
+creer  un API
+=>dans le framework en creer un annotation WebApi lorsque on utilise cet annotation dans la methode annoter retour  (json)
+annotation toJson transformer un object on json
+qui ne fonction dan view mais return un json
+
+dans frontservlet test cet annotation si il existe , il doit retourn u json ;
+sinon 
+
+# sprint 7
+invok parametr d un fonction 
+get les valeur d un input d un formulaire 
+    si le type de fonction est parametre est object donc return erreur exeption
+    sinon le afficher les valeur de   
+
+
+## suite
+upload
+session
+role(authorisation)
+
