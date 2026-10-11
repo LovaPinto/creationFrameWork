@@ -1,5 +1,6 @@
 @echo off
 setlocal
+pushd "%~dp0"
 
 set SERVLET_API=C:\apache-tomcat-10.1.55-windows-x64\apache-tomcat-10.1.55\lib\servlet-api.jar
 
@@ -21,6 +22,7 @@ javac -cp "%SERVLET_API%" -d build\classes @sources_fw.txt
 
 if errorlevel 1 (
     echo ERREUR FRAMEWORK
+    popd
     pause
     exit /b 1
 )
@@ -36,6 +38,7 @@ jar cvf lib\sprint1.jar -C build\classes .
 
 if errorlevel 1 (
     echo ERREUR JAR
+    popd
     pause
     exit /b 1
 )
@@ -46,7 +49,6 @@ echo =========================
 
 cd ..\testmonjar
 
-if exist build rmdir /s /q build
 mkdir build\classes
 
 dir /s /b src\main\java\*.java > sources_app.txt
@@ -57,6 +59,7 @@ javac -cp "..\framework\lib\sprint1.jar;%SERVLET_API%" ^
 
 if errorlevel 1 (
     echo ERREUR APPLICATION
+    popd
     pause
     exit /b 1
 )
@@ -67,4 +70,5 @@ echo =========================
 echo BUILD TERMINE
 echo =========================
 
+popd
 pause
