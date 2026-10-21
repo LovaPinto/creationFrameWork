@@ -2,11 +2,14 @@ package com.lovapinto;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Part;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -16,6 +19,7 @@ import java.lang.reflect.Parameter;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -24,6 +28,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@MultipartConfig(
+        fileSizeThreshold = 1024 * 1024,
+        maxFileSize = 1024 * 1024 * 10,
+        maxRequestSize = 1024 * 1024 * 15
+)
 public class FrontServlet extends HttpServlet {
 
     private static final int MAX_BINDING_DEPTH = 32;
@@ -264,12 +273,45 @@ public class FrontServlet extends HttpServlet {
         if (Map.class.isAssignableFrom(parameterType)) {
             return new LinkedHashMap<String, Object>();
         }
+        if (Part.class.isAssignableFrom(parameterType)) {
+            return resolvePart(parameter, null, req);
+        }
+        if (parameterType.getName().equals("com.lovapinto.PartFile") || parameterType.getSimpleName().equals("PartFile")) {
+            Part part = resolvePart(parameter, null, req);
+            if (part == null) {
+                return null;
+            }
+            try {
+                return instantiatePartFile(parameterType, part);
+            } catch (ServletException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new ServletException("Erreur lors de la création du PartFile", e);
+            }
+        }
         return null;
     }
 
     private Object resolveRequestParam(Parameter parameter, String name, HttpServletRequest req)
             throws ServletException {
         Class<?> targetType = parameter.getType();
+
+        if (isFileType(targetType)) {
+            Part part = resolvePart(parameter, name, req);
+            if (part == null) {
+                throw new ServletException("Fichier manquant : " + name + describe(parameter));
+            }
+            if (Part.class.isAssignableFrom(targetType)) {
+                return part;
+            }
+            try {
+                return instantiatePartFile(targetType, part);
+            } catch (ServletException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new ServletException("Erreur lors de la création du PartFile", e);
+            }
+        }
 
         if (isSimpleType(targetType)) {
             String value = req.getParameter(name);
@@ -353,6 +395,135 @@ public class FrontServlet extends HttpServlet {
             field.set(instance, value);
         } catch (IllegalAccessException e) {
             throw new ServletException("Paramètre " + label + " : champ inaccessible " + field.getName(), e);
+        }
+    }
+
+    private boolean isFileType(Class<?> type) {
+        if (type == null) {
+            return false;
+        }
+        if (Part.class.isAssignableFrom(type)) {
+            return true;
+        }
+        if (type.getName().equals("com.lovapinto.PartFile") || type.getSimpleName().equals("PartFile")) {
+            return true;
+        }
+        return false;
+    }
+
+    private Part resolvePart(Parameter parameter, String name, HttpServletRequest req) throws ServletException {
+        if (req == null) {
+            return null;
+        }
+        String contentType = req.getContentType();
+        if (contentType == null || !contentType.toLowerCase().contains("multipart/")) {
+            return null;
+        }
+        try {
+            if (name == null || name.isBlank()) {
+                Collection<Part> parts = req.getParts();
+                if (parts == null || parts.isEmpty()) {
+                    return null;
+                }
+                for (Part part : parts) {
+                    if (part.getSubmittedFileName() != null) {
+                        return part;
+                    }
+                }
+                return parts.iterator().next();
+            }
+            Part part = req.getPart(name);
+            if (part != null && part.getSubmittedFileName() != null && !part.getSubmittedFileName().isBlank()) {
+                return part;
+            }
+            if (part != null) {
+                if (part.getSize() > 0) {
+                    return part;
+                }
+                return null;
+            }
+            Collection<Part> parts = req.getParts();
+            if (parts == null) {
+                return null;
+            }
+            for (Part p : parts) {
+                String fieldName = p.getName();
+                if (name.equals(fieldName)) {
+                    if (p.getSubmittedFileName() != null && !p.getSubmittedFileName().isBlank()) {
+                        return p;
+                    }
+                    if (p.getSize() > 0) {
+                        return p;
+                    }
+                }
+            }
+            for (Part p : parts) {
+                String fieldName = p.getName();
+                if (fieldName != null && fieldName.equals(name + ".file")) {
+                    if (p.getSubmittedFileName() != null && !p.getSubmittedFileName().isBlank()) {
+                        return p;
+                    }
+                    if (p.getSize() > 0) {
+                        return p;
+                    }
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            throw new ServletException("Erreur lors de la récupération du fichier", e);
+        }
+    }
+
+    private Object instantiatePartFile(Class<?> targetType, Part part) throws Exception {
+        try {
+            Object instance = instantiate(targetType, part.getName(), null);
+            Field nameField = findField(targetType, "name", "fileName", "filename");
+            if (nameField != null) {
+                setFieldIfPossible(nameField, instance, part.getSubmittedFileName());
+            }
+            Field contentTypeField = findField(targetType, "contentType", "mimeType", "type");
+            if (contentTypeField != null) {
+                setFieldIfPossible(contentTypeField, instance, part.getContentType());
+            }
+            Field sizeField = findField(targetType, "size", "length");
+            if (sizeField != null) {
+                setFieldIfPossible(sizeField, instance, part.getSize());
+            }
+            Field bytesField = findField(targetType, "bytes", "data", "content");
+            if (bytesField != null) {
+                byte[] bytes = part.getInputStream().readAllBytes();
+                setFieldIfPossible(bytesField, instance, bytes);
+            }
+            Field inputStreamField = findField(targetType, "inputStream", "stream");
+            if (inputStreamField != null) {
+                setFieldIfPossible(inputStreamField, instance, part.getInputStream());
+            }
+            Field partField = findField(targetType, "part", "originalPart");
+            if (partField != null) {
+                setFieldIfPossible(partField, instance, part);
+            }
+            return instance;
+        } catch (Exception e) {
+            throw e;
+        }
+    }
+
+    private Field findField(Class<?> targetType, String... names) {
+        for (String name : names) {
+            try {
+                Field field = targetType.getDeclaredField(name);
+                return field;
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private void setFieldIfPossible(Field field, Object instance, Object value) {
+        try {
+            field.setAccessible(true);
+            field.set(instance, value);
+        } catch (Exception ignored) {
         }
     }
 //instantiation et conversion en object apres 
