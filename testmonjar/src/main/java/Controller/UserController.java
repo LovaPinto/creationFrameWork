@@ -75,4 +75,24 @@ public class UserController {
         return new ModelAndView("users/detail")
                 .setModelContainer(model);
     }
+
+    @WebApi
+    @UrlMapping(path = "/upload/test", method = "POST")
+    public Map<String, Object> uploadTest(@MyRequestParam("file") com.lovapinto.PartFile file) {
+        Map<String, Object> result = new HashMap<>();
+        if (file == null) {
+            result.put("error", "Aucun fichier reçu");
+            return result;
+        }
+        result.put("fileName", file.getFileName());
+        result.put("contentType", file.getContentType());
+        result.put("size", file.getSize());
+        result.put("name", file.getName());
+        return result;
+    }
+
+    @UrlMapping(path = "/form/upload")
+    public ModelAndView formUpload() {
+        return new ModelAndView("users/form-upload");
+    }
 }

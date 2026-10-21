@@ -85,9 +85,33 @@ get les valeur d un input d un formulaire
     si le type de fonction est parametre est object donc return erreur exeption
     sinon le afficher les valeur de   
 
+#   sprint 8
+upload fichier dans  une formulaire et de le traiter dans le controlle
+
+creer un class Mapfile
+nom
+extension
+tab bite
+
+# sprint 9 
+session
+un session doit etre disponible dans le methode dans controller
+atao singlton ny controller 
+map(key:"dossier/controller",valeur:"instance controller")
+context ny map key de valeur instant les session
+
+
+creer un class session => injectena 
+recupere les variable , suprimer
+unique pour chaque session
+mise a jour httpsession,
+
+
 
 ## suite
 upload
 session
 role(authorisation)
+
+
 
