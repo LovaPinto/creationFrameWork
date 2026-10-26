@@ -85,3 +85,4 @@ Construit un texte du type `(paramètre x de MaClasse.maMethode)` ajouté aux me
 ## Résumé
 
 `buildArguments` → `resolveArgument` → (`resolveRequestParam` → `bindObject` / `convertParamValue`) ; les autres fonctions sont des outils au service de ces quatre-là.
+

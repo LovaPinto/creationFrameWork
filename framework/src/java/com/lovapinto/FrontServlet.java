@@ -3,6 +3,7 @@ package com.lovapinto;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -37,6 +38,7 @@ public class FrontServlet extends HttpServlet {
 
     private static final int MAX_BINDING_DEPTH = 32;
     private static final int MAX_BINDING_PREFIXES = 4;
+    private static final String SESSION_COOKIE = "MYSESSIONID";
 
     private Map<UrlMethod, Method> urlMappings = new HashMap<>();
     private ApplicationContext applicationContext;
@@ -270,6 +272,9 @@ public class FrontServlet extends HttpServlet {
         if (Model.class.isAssignableFrom(parameterType)) {
             return new Model();
         }
+        if (MySession.class.isAssignableFrom(parameterType)) {
+            return resolveSession(req, res);
+        }
         if (Map.class.isAssignableFrom(parameterType)) {
             return new LinkedHashMap<String, Object>();
         }
@@ -290,6 +295,41 @@ public class FrontServlet extends HttpServlet {
             }
         }
         return null;
+    }
+
+    private MySession resolveSession(HttpServletRequest req, HttpServletResponse res) {
+        SessionManager sessionManager =
+                (SessionManager) getServletContext().getAttribute("sessionManager");
+        if (sessionManager == null) {
+            sessionManager = new SessionManager();
+            getServletContext().setAttribute("sessionManager", sessionManager);
+        }
+
+        String sessionId = null;
+        Cookie[] cookies = req.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if (SESSION_COOKIE.equals(cookie.getName())) {
+                    sessionId = cookie.getValue();
+                    break;
+                }
+            }
+        }
+
+        MySession session = sessionId == null ? null : sessionManager.getSession(sessionId);
+        if (session == null || !session.isValid()) {
+            session = sessionManager.createSession();
+
+            Cookie cookie = new Cookie(SESSION_COOKIE, session.getId());
+            cookie.setHttpOnly(true);
+            String path = req.getContextPath();
+            cookie.setPath(path == null || path.isEmpty() ? "/" : path);
+            res.addCookie(cookie);
+        } else {
+            session.updateLastAccessedTime();
+        }
+
+        return session;
     }
 
     private Object resolveRequestParam(Parameter parameter, String name, HttpServletRequest req)
