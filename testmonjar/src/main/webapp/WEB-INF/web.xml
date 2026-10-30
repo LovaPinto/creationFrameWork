@@ -16,6 +16,11 @@
     </context-param>
 
     <context-param>
+        <param-name>auth-redirect</param-name>
+        <param-value>/controller/login</param-value>
+    </context-param>
+
+    <context-param>
         <param-name>db-url</param-name>
         <param-value>jdbc:mysql://localhost:3306/db_framework</param-value>
     </context-param>
