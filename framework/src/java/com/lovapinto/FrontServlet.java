@@ -3,6 +3,7 @@ package com.lovapinto;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -37,6 +38,7 @@ public class FrontServlet extends HttpServlet {
 
     private static final int MAX_BINDING_DEPTH = 32;
     private static final int MAX_BINDING_PREFIXES = 4;
+    private static final String SESSION_COOKIE = "MYSESSIONID";
 
     private Map<UrlMethod, Method> urlMappings = new HashMap<>();
     private ApplicationContext applicationContext;
@@ -157,6 +159,11 @@ public class FrontServlet extends HttpServlet {
             return;
         }
 
+        if (isAuthRequired(method) && !isAuthenticated(method, req)) {
+            handleUnauthorized(method, req, res);
+            return;
+        }
+
         try {
             Object controller = getControllerInstance(method.getDeclaringClass().getName());
             if (controller == null) {
@@ -190,6 +197,104 @@ public class FrontServlet extends HttpServlet {
         return method.isAnnotationPresent(WebApi.class)
                 || method.getDeclaringClass().isAnnotationPresent(WebApi.class);
     }
+//authentification
+    private boolean isAuthRequired(Method method) {
+        return method.isAnnotationPresent(Auth.class)
+                || method.getDeclaringClass().isAnnotationPresent(Auth.class);
+    }
+
+    private Auth resolveAuth(Method method) {
+        Auth auth = method.getAnnotation(Auth.class);
+        if (auth == null) {
+            auth = method.getDeclaringClass().getAnnotation(Auth.class);
+        }
+        return auth;
+    }
+
+    private boolean isAuthenticated(Method method, HttpServletRequest req) {
+        Auth auth = resolveAuth(method);
+        if (auth == null) {
+            return true;
+        }
+
+        MySession session = findSession(req);
+        if (session == null) {
+            return false;
+        }
+
+        String attribute = auth.value() == null || auth.value().isBlank() ? "user" : auth.value();
+        try {
+            return session.getAttribute(attribute) != null;
+        } catch (IllegalStateException e) {
+            return false;
+        }
+    }
+
+    private MySession findSession(HttpServletRequest req) {
+        SessionManager sessionManager =
+                (SessionManager) getServletContext().getAttribute("sessionManager");
+        if (sessionManager == null) {
+            return null;
+        }
+
+        String sessionId = getSessionId(req);
+        if (sessionId == null) {
+            return null;
+        }
+
+        MySession session = sessionManager.getSession(sessionId);
+        if (session == null || !session.isValid()) {
+            return null;
+        }
+
+        session.updateLastAccessedTime();
+        return session;
+    }
+
+    private String getSessionId(HttpServletRequest req) {
+        Cookie[] cookies = req.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+        for (Cookie cookie : cookies) {
+            if (SESSION_COOKIE.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+        return null;
+    }
+
+    private void handleUnauthorized(Method method, HttpServletRequest req, HttpServletResponse res)
+            throws IOException {
+        if (isWebApi(method)) {
+            res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentification requise");
+            return;
+        }
+
+        Auth auth = resolveAuth(method);
+        String redirect = auth == null ? "" : auth.redirect();
+        if (redirect == null || redirect.isBlank()) {
+            redirect = getServletContext().getInitParameter("auth-redirect");
+        }
+
+        if (redirect == null || redirect.isBlank()) {
+            res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentification requise");
+            return;
+        }
+
+        if (redirect.startsWith("http://") || redirect.startsWith("https://")) {
+            res.sendRedirect(redirect);
+            return;
+        }
+
+        String contextPath = req.getContextPath();
+        String target = (contextPath == null ? "" : contextPath)
+                + (redirect.startsWith("/") ? redirect : "/" + redirect);
+        res.sendRedirect(target);
+    }
+    //fin authentification
+
+    //json rendering
 
     private void renderJson(HttpServletResponse res, Object result) throws IOException {
         Object value = result instanceof ModelAndView modelAndView ? modelAndView.getModel() : result;
@@ -270,6 +375,9 @@ public class FrontServlet extends HttpServlet {
         if (Model.class.isAssignableFrom(parameterType)) {
             return new Model();
         }
+        if (MySession.class.isAssignableFrom(parameterType)) {
+            return resolveSession(req, res);
+        }
         if (Map.class.isAssignableFrom(parameterType)) {
             return new LinkedHashMap<String, Object>();
         }
@@ -290,6 +398,32 @@ public class FrontServlet extends HttpServlet {
             }
         }
         return null;
+    }
+
+    private MySession resolveSession(HttpServletRequest req, HttpServletResponse res) {
+        SessionManager sessionManager =
+                (SessionManager) getServletContext().getAttribute("sessionManager");
+        if (sessionManager == null) {
+            sessionManager = new SessionManager();
+            getServletContext().setAttribute("sessionManager", sessionManager);
+        }
+
+        String sessionId = getSessionId(req);
+
+        MySession session = sessionId == null ? null : sessionManager.getSession(sessionId);
+        if (session == null || !session.isValid()) {
+            session = sessionManager.createSession();
+
+            Cookie cookie = new Cookie(SESSION_COOKIE, session.getId());
+            cookie.setHttpOnly(true);
+            String path = req.getContextPath();
+            cookie.setPath(path == null || path.isEmpty() ? "/" : path);
+            res.addCookie(cookie);
+        } else {
+            session.updateLastAccessedTime();
+        }
+
+        return session;
     }
 
     private Object resolveRequestParam(Parameter parameter, String name, HttpServletRequest req)

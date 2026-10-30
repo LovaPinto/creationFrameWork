@@ -9,7 +9,7 @@
 
     <body>
         <h1>Test Binding sans objet DTO</h1>
-        <form action="${pageContext.request.contextPath}/controller/test/binding-simple" method="post">
+        <form action="${pageContext.request.contextPath}/controller/session/creer" method="post">
             <label>Nom : <input type="text" name="name" required></label><br>
             <label>Age : <input type="number" name="age" required></label><br>
             <button type="submit">Envoyer</button>
